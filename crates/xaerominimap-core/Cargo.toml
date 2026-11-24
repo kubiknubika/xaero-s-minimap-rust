@@ -1,0 +1,8 @@
+[package]
+name = "xaerominimap-core"
+description = "Core domain model of the Xaero's Minimap Rust rewrite: waypoints, minimap worlds, tiles, radar state."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]

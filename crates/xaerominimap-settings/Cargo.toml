@@ -1,0 +1,8 @@
+[package]
+name = "xaerominimap-settings"
+description = "Settings store and legacy config IO of the Xaero's Minimap Rust rewrite."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
