@@ -1,0 +1,9 @@
+[package]
+name = "xaerominimap-render"
+description = "Rendering core of the Xaero's Minimap Rust rewrite."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+xaerominimap-core = { path = "../xaerominimap-core" }
