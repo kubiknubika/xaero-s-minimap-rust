@@ -143,7 +143,8 @@ mod tests {
         let mut canvas = RasterCanvas::new(10, 10);
         canvas.set_pixel(2, 3, Color::rgb(1, 2, 3));
         assert_eq!(canvas.get(2, 3), Some(Color::rgb(1, 2, 3)));
-        assert_eq!(canvas.get(3, 3), None); // out of bounds (x >= width)
+        assert_eq!(canvas.get(3, 3), Some(Color::transparent()));
+        assert_eq!(canvas.get(10, 3), None); // out of bounds (x >= width)
         assert_eq!(canvas.drawn_pixels(), 1);
     }
 

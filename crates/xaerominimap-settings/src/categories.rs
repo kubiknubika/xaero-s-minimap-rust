@@ -329,6 +329,11 @@ pub struct ObjectCategoryHardRule {
 }
 
 impl ObjectCategoryHardRule {
+    /// `getName()`.
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
     /// `isFollowedBy(Object, Object)Z`: the rule is followed when the
     /// predicate passes and not reversed.
     pub fn is_followed_by(&self, setting: &ObjectCategorySetting, value: &SettingValue) -> bool {
@@ -376,7 +381,7 @@ impl HardRuleBuilder {
 
 /// `xaero/hud/category/rule/ObjectCategoryListRuleType`: describes one
 /// string-list rule (id + string handling).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ObjectCategoryListRuleType {
     id: String,
 }
@@ -401,6 +406,25 @@ pub enum ExcludeListMode {
     Only,
     /// `ALL_BUT`.
     AllBut,
+}
+
+impl ExcludeListMode {
+    /// Java `Enum.name()`.
+    pub fn name(self) -> &'static str {
+        match self {
+            ExcludeListMode::Only => "ONLY",
+            ExcludeListMode::AllBut => "ALL_BUT",
+        }
+    }
+
+    /// Java `ExcludeListMode.valueOf(String)`.
+    pub fn from_name(name: &str) -> Option<ExcludeListMode> {
+        match name {
+            "ONLY" => Some(ExcludeListMode::Only),
+            "ALL_BUT" => Some(ExcludeListMode::AllBut),
+            _ => None,
+        }
+    }
 }
 
 /// `xaero/hud/category/rule/ObjectCategoryListRule`: an include or exclude
@@ -733,7 +757,7 @@ impl ObjectCategoryDataBuilder {
     }
 }
 
-fn setting_value_to_json(v: &SettingValue) -> json::Json {
+pub(crate) fn setting_value_to_json(v: &SettingValue) -> json::Json {
     match v {
         SettingValue::Bool(b) => json::Json::Bool(*b),
         SettingValue::Int(i) => json::Json::Num(*i as f64),
@@ -743,7 +767,7 @@ fn setting_value_to_json(v: &SettingValue) -> json::Json {
     }
 }
 
-fn setting_value_from_json(v: &json::Json) -> Option<SettingValue> {
+pub(crate) fn setting_value_from_json(v: &json::Json) -> Option<SettingValue> {
     match v {
         json::Json::Bool(b) => Some(SettingValue::Bool(*b)),
         json::Json::Str(s) => Some(SettingValue::Str(s.clone())),
@@ -758,253 +782,147 @@ fn setting_value_from_json(v: &json::Json) -> Option<SettingValue> {
     }
 }
 
-/// Minimal JSON value used by the category serialization
-/// (replaces Gson's tree and the NBT tag types).
-pub mod json {
-    /// A parsed JSON value.
-    #[derive(Debug, Clone, PartialEq)]
-    pub enum Json {
-        Null,
-        Bool(bool),
-        Num(f64),
-        Str(String),
-        Arr(Vec<Json>),
-        Obj(Vec<(String, Json)>),
+/// Minimal JSON value and parser, shared with the other crates.
+/// Re-exported from `xaerominimap-json`.
+pub use xaerominimap_json as json;
+
+/// `xaero/hud/category/serialization/data/FilterObjectCategoryData`: a
+/// serializable category with hard-include, include/exclude lists and an
+/// exclude mode. The base name/settings/sub-categories/protection fields are
+/// stored in the embedded [`ObjectCategoryData`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilterObjectCategoryData {
+    base: ObjectCategoryData,
+    hard_include: String,
+    include_list: Vec<String>,
+    include_list_in_super_category: bool,
+    exclude_mode: ExcludeListMode,
+    exclude_list: Vec<String>,
+}
+
+impl FilterObjectCategoryData {
+    /// Java constructor order: name, hardInclude, includeList, excludeList,
+    /// excludeMode, settingOverrides, subCategories,
+    /// includeListInSuperCategory, protection.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        name: &str,
+        hard_include: &str,
+        include_list: Vec<String>,
+        exclude_list: Vec<String>,
+        exclude_mode: ExcludeListMode,
+        setting_overrides: BTreeMap<String, SettingValue>,
+        sub_categories: Vec<ObjectCategoryData>,
+        include_list_in_super_category: bool,
+        protection: bool,
+    ) -> Self {
+        FilterObjectCategoryData {
+            base: ObjectCategoryData::new(
+                name,
+                setting_overrides,
+                sub_categories,
+                protection,
+            ),
+            hard_include: hard_include.to_string(),
+            include_list,
+            include_list_in_super_category,
+            exclude_mode,
+            exclude_list,
+        }
     }
 
-    /// `json::parse`: parses text into a [`Json`] value.
-    pub fn parse(text: &str) -> Result<Json, String> {
-        let mut p = Parser {
-            bytes: text.as_bytes(),
-            pos: 0,
+    /// `getBase()`-style access to the inherited data.
+    pub fn get_base(&self) -> &ObjectCategoryData {
+        &self.base
+    }
+
+    pub fn get_hard_include(&self) -> &str {
+        &self.hard_include
+    }
+
+    pub fn get_include_list(&self) -> &[String] {
+        &self.include_list
+    }
+
+    pub fn get_exclude_list(&self) -> &[String] {
+        &self.exclude_list
+    }
+
+    pub fn get_include_list_in_super_category(&self) -> bool {
+        self.include_list_in_super_category
+    }
+
+    pub fn get_exclude_mode(&self) -> ExcludeListMode {
+        self.exclude_mode
+    }
+
+    /// `FilterObjectCategoryDataNbtSerializer.serialize` as JSON (NBT keys
+    /// `h`, `i`, `m`, `l`, `e` are kept verbatim for parity).
+    pub fn to_json(&self) -> String {
+        let json::Json::Obj(mut base) = data_to_json(&self.base) else {
+            unreachable!()
         };
-        p.skip_ws();
-        let v = p.value()?;
-        p.skip_ws();
-        if p.pos != p.bytes.len() {
-            return Err(format!("trailing input at offset {}", p.pos));
-        }
-        Ok(v)
+        base.push(("h".into(), json::Json::Str(self.hard_include.clone())));
+        base.push((
+            "i".into(),
+            json::Json::Bool(self.include_list_in_super_category),
+        ));
+        base.push(("m".into(), json::Json::Str(self.exclude_mode.name().into())));
+        base.push((
+            "l".into(),
+            json::Json::Arr(
+                self.include_list
+                    .iter()
+                    .map(|s| json::Json::Str(s.clone()))
+                    .collect(),
+            ),
+        ));
+        base.push((
+            "e".into(),
+            json::Json::Arr(
+                self.exclude_list
+                    .iter()
+                    .map(|s| json::Json::Str(s.clone()))
+                    .collect(),
+            ),
+        ));
+        json::to_string(&json::Json::Obj(base))
     }
 
-    /// `json::to_string`: encodes a value.
-    pub fn to_string(v: &Json) -> String {
-        let mut out = String::new();
-        encode(v, &mut out);
-        out
-    }
-
-    /// `json::get`: looks up a key in an object value.
-    pub fn get<'a>(v: &'a Json, key: &str) -> Option<&'a Json> {
-        match v {
-            Json::Obj(pairs) => pairs.iter().find(|(k, _)| k == key).map(|(_, val)| val),
-            _ => None,
-        }
-    }
-
-    fn encode(v: &Json, out: &mut String) {
-        match v {
-            Json::Null => out.push_str("null"),
-            Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-            Json::Num(n) => {
-                if n.is_finite() && n.fract() == 0.0 && n.abs() <= 9.0e15 {
-                    out.push_str(&format!("{}", *n as i64));
-                } else {
-                    out.push_str(&format!("{n}"));
-                }
-            }
-            Json::Str(s) => encode_str(s, out),
-            Json::Arr(items) => {
-                out.push('[');
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        out.push(',');
-                    }
-                    encode(item, out);
-                }
-                out.push(']');
-            }
-            Json::Obj(pairs) => {
-                out.push('{');
-                for (i, (key, val)) in pairs.iter().enumerate() {
-                    if i > 0 {
-                        out.push(',');
-                    }
-                    encode_str(key, out);
-                    out.push(':');
-                    encode(val, out);
-                }
-                out.push('}');
-            }
-        }
-    }
-
-    fn encode_str(s: &str, out: &mut String) {
-        out.push('"');
-        for c in s.chars() {
-            match c {
-                '"' => out.push_str("\\\""),
-                '\\' => out.push_str("\\\\"),
-                '\n' => out.push_str("\\n"),
-                '\r' => out.push_str("\\r"),
-                '\t' => out.push_str("\\t"),
-                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-                c => out.push(c),
-            }
-        }
-        out.push('"');
-    }
-
-    struct Parser<'a> {
-        bytes: &'a [u8],
-        pos: usize,
-    }
-
-    impl<'a> Parser<'a> {
-        fn skip_ws(&mut self) {
-            while self.pos < self.bytes.len()
-                && matches!(self.bytes[self.pos], b' ' | b'\t' | b'\n' | b'\r')
-            {
-                self.pos += 1;
-            }
-        }
-
-        fn peek(&self) -> Option<u8> {
-            self.bytes.get(self.pos).copied()
-        }
-
-        fn value(&mut self) -> Result<Json, String> {
-            self.skip_ws();
-            match self.peek() {
-                Some(b'{') => self.object(),
-                Some(b'[') => self.array(),
-                Some(b'"') => Ok(Json::Str(self.string()?)),
-                Some(b't') => self.lit("true", Json::Bool(true)),
-                Some(b'f') => self.lit("false", Json::Bool(false)),
-                Some(b'n') => self.lit("null", Json::Null),
-                Some(_) => self.number(),
-                None => Err("unexpected end of input".to_string()),
-            }
-        }
-
-        fn lit(&mut self, text: &str, value: Json) -> Result<Json, String> {
-            if self.bytes[self.pos..].starts_with(text.as_bytes()) {
-                self.pos += text.len();
-                Ok(value)
-            } else {
-                Err(format!("expected `{text}` at offset {}", self.pos))
-            }
-        }
-
-        fn object(&mut self) -> Result<Json, String> {
-            self.pos += 1; // '{'
-            let mut out = Vec::new();
-            self.skip_ws();
-            if self.peek() == Some(b'}') {
-                self.pos += 1;
-                return Ok(Json::Obj(out));
-            }
-            loop {
-                self.skip_ws();
-                let key = self.string()?;
-                self.skip_ws();
-                if self.peek() != Some(b':') {
-                    return Err("expected ':'".to_string());
-                }
-                self.pos += 1;
-                let value = self.value()?;
-                out.push((key, value));
-                self.skip_ws();
-                match self.peek() {
-                    Some(b',') => self.pos += 1,
-                    Some(b'}') => {
-                        self.pos += 1;
-                        return Ok(Json::Obj(out));
-                    }
-                    _ => return Err("expected ',' or '}'".to_string()),
-                }
-            }
-        }
-
-        fn array(&mut self) -> Result<Json, String> {
-            self.pos += 1; // '['
-            let mut out = Vec::new();
-            self.skip_ws();
-            if self.peek() == Some(b']') {
-                self.pos += 1;
-                return Ok(Json::Arr(out));
-            }
-            loop {
-                out.push(self.value()?);
-                self.skip_ws();
-                match self.peek() {
-                    Some(b',') => self.pos += 1,
-                    Some(b']') => {
-                        self.pos += 1;
-                        return Ok(Json::Arr(out));
-                    }
-                    _ => return Err("expected ',' or ']'".to_string()),
-                }
-            }
-        }
-
-        fn string(&mut self) -> Result<String, String> {
-            if self.peek() != Some(b'"') {
-                return Err("expected string".to_string());
-            }
-            self.pos += 1;
-            let mut out = String::new();
-            loop {
-                let b = self.peek().ok_or_else(|| "unterminated string".to_string())?;
-                self.pos += 1;
-                match b {
-                    b'"' => return Ok(out),
-                    b'\\' => {
-                        let e = self.peek().ok_or_else(|| "unterminated escape".to_string())?;
-                        self.pos += 1;
-                        match e {
-                            b'"' => out.push('"'),
-                            b'\\' => out.push('\\'),
-                            b'/' => out.push('/'),
-                            b'b' => out.push('\u{8}'),
-                            b'f' => out.push('\u{c}'),
-                            b'n' => out.push('\n'),
-                            b'r' => out.push('\r'),
-                            b't' => out.push('\t'),
-                            b'u' => {
-                                let mut code: u32 = 0;
-                                for _ in 0..4 {
-                                    let c = self.peek().ok_or_else(|| "bad \\u escape".to_string())?;
-                                    self.pos += 1;
-                                    code = code * 16
-                                        + (c as char)
-                                            .to_digit(16)
-                                            .ok_or_else(|| "bad hex digit".to_string())?;
-                                }
-                                out.push(char::from_u32(code).unwrap_or('\u{fffd}'));
-                            }
-                            _ => return Err("bad escape".to_string()),
-                        }
-                    }
-                    _ => out.push(b as char),
-                }
-            }
-        }
-
-        fn number(&mut self) -> Result<Json, String> {
-            let start = self.pos;
-            while self.pos < self.bytes.len()
-                && matches!(
-                    self.bytes[self.pos],
-                    b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E'
-                )
-            {
-                self.pos += 1;
-            }
-            let text = std::str::from_utf8(&self.bytes[start..self.pos])
-                .map_err(|e| e.to_string())?;
-            text.parse::<f64>().map(Json::Num).map_err(|e| e.to_string())
-        }
+    /// Inverse of [`FilterObjectCategoryData::to_json`].
+    pub fn from_json(text: &str) -> Result<FilterObjectCategoryData, String> {
+        let value = json::parse(text)?;
+        let base = data_from_json(&value)?;
+        let string_or_default = |key: &str| match json::get(&value, key) {
+            Some(json::Json::Str(s)) => s.clone(),
+            _ => String::new(),
+        };
+        let strings_or_default = |key: &str| match json::get(&value, key) {
+            Some(json::Json::Arr(items)) => items
+                .iter()
+                .filter_map(|item| match item {
+                    json::Json::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let exclude_mode = match json::get(&value, "m") {
+            Some(json::Json::Str(name)) => ExcludeListMode::from_name(name)
+                .ok_or_else(|| format!("unknown exclude mode `{name}`"))?,
+            _ => ExcludeListMode::AllBut,
+        };
+        Ok(FilterObjectCategoryData {
+            base,
+            hard_include: string_or_default("h"),
+            include_list: strings_or_default("l"),
+            include_list_in_super_category: matches!(
+                json::get(&value, "i"),
+                Some(json::Json::Bool(true))
+            ),
+            exclude_mode,
+            exclude_list: strings_or_default("e"),
+        })
     }
 }
 
@@ -1113,5 +1031,38 @@ mod tests {
         assert_eq!(EditorSettingType::from_name("slider"), Some(EditorSettingType::Slider));
         assert_eq!(EditorSettingType::Slider.name(), "slider");
         assert_eq!(EditorSettingType::from_name("nope"), None);
+    }
+
+    #[test]
+    fn exclude_mode_names() {
+        assert_eq!(ExcludeListMode::Only.name(), "ONLY");
+        assert_eq!(ExcludeListMode::AllBut.name(), "ALL_BUT");
+        assert_eq!(ExcludeListMode::from_name("ONLY"), Some(ExcludeListMode::Only));
+        assert_eq!(ExcludeListMode::from_name("nope"), None);
+    }
+
+    #[test]
+    fn filter_category_data_json_round_trip() {
+        let data = FilterObjectCategoryData::new(
+            "Players",
+            "player",
+            vec!["zombie".into(), "skeleton".into()],
+            vec!["creeper".into()],
+            ExcludeListMode::Only,
+            BTreeMap::new(),
+            vec![],
+            true,
+            false,
+        );
+        let text = data.to_json();
+        assert!(text.contains("\"h\":\"player\""));
+        assert!(text.contains("\"m\":\"ONLY\""));
+        let parsed = FilterObjectCategoryData::from_json(&text).unwrap();
+        assert_eq!(parsed, data);
+        assert_eq!(parsed.get_base().get_name(), "Players");
+        assert_eq!(parsed.get_include_list().len(), 2);
+        assert_eq!(parsed.get_exclude_list(), &["creeper".to_string()]);
+        assert!(parsed.get_include_list_in_super_category());
+        assert_eq!(parsed.get_exclude_mode(), ExcludeListMode::Only);
     }
 }

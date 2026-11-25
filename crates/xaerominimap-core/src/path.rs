@@ -66,6 +66,44 @@ impl XaeroPath {
     pub fn starts_with(&self, prefix: &XaeroPath) -> bool {
         self.parts.starts_with(&prefix.parts)
     }
+
+    /// `getParent()` — the path without its last node, or `None` at the root.
+    pub fn parent(&self) -> Option<XaeroPath> {
+        if self.parts.is_empty() {
+            None
+        } else {
+            Some(XaeroPath {
+                parts: self.parts[..self.parts.len() - 1].to_vec(),
+            })
+        }
+    }
+
+    /// `getRoot()` — the first node of the path.
+    pub fn root(&self) -> Option<XaeroPath> {
+        self.parts.first().map(|part| XaeroPath::of(&[part]))
+    }
+
+    /// `getNodeCount()`.
+    pub fn node_count(&self) -> usize {
+        self.parts.len()
+    }
+
+    /// `resolve(String)` — appends a node.
+    pub fn resolve(&self, node: &str) -> XaeroPath {
+        self.join(node)
+    }
+
+    /// `isSubOf(XaeroPath)` — strict prefix test.
+    pub fn is_sub_of(&self, other: &XaeroPath) -> bool {
+        self.parts.len() > other.parts.len() && self.parts.starts_with(&other.parts)
+    }
+
+    /// `getSubPath(int)` — the first `count` nodes.
+    pub fn sub_path(&self, count: usize) -> XaeroPath {
+        XaeroPath {
+            parts: self.parts.iter().take(count).cloned().collect(),
+        }
+    }
 }
 
 impl FromIterator<String> for XaeroPath {

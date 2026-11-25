@@ -2,6 +2,8 @@
 //! (Mirrors the drawing core of `xaero/common/minimap/render` and the
 //! waypoint/radar renderers.)
 
+use std::sync::Arc;
+
 use xaerominimap_core::radar::RadarEntity;
 
 use crate::canvas::{Canvas, Color};
@@ -161,6 +163,14 @@ impl MinimapRenderer {
                 canvas.draw_point(x as i32, y as i32, color, 1);
             }
         }
+    }
+}
+
+/// Shared tile sources work with the HUD layer, which keeps an `Arc` to the
+/// chunk grid a mixin fills.
+impl<T: TileSource + ?Sized> TileSource for Arc<T> {
+    fn chunk_color(&self, chunk_x: i32, chunk_z: i32) -> Option<Color> {
+        (**self).chunk_color(chunk_x, chunk_z)
     }
 }
 
