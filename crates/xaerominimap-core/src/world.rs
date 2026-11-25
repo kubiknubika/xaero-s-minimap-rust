@@ -217,11 +217,30 @@ impl MinimapWorldRootContainer {
 #[derive(Debug, Clone, Default)]
 pub struct MinimapWorldManager {
     root_containers: BTreeMap<XaeroPath, MinimapWorldRootContainer>,
+    /// `MinimapClientWorldData.serverLevelId`, set by
+    /// `MinimapWorldStateUpdater.onServerLevelId`.
+    server_level_id: Option<i32>,
 }
 
 impl MinimapWorldManager {
     pub fn new() -> Self {
         MinimapWorldManager::default()
+    }
+
+    /// `MinimapWorldStateUpdater.onServerLevelId(int)` — stores the id sent
+    /// by the server (the Java code also logs it).
+    pub fn set_server_level_id(&mut self, id: i32) {
+        self.server_level_id = Some(id);
+    }
+
+    pub fn get_server_level_id(&self) -> Option<i32> {
+        self.server_level_id
+    }
+
+    /// `MinimapWorldStateUpdater.hasServerLevelId(root)` — the id is ignored
+    /// when the root config opts out.
+    pub fn has_server_level_id(&self, root: &MinimapWorldRootContainer) -> bool {
+        self.server_level_id.is_some() && !root.config.is_ignore_server_level_id()
     }
 
     /// `getWorldContainer(XaeroPath)`.
@@ -354,19 +373,33 @@ impl MinimapWorldContainer {
     }
 
     /// `getDirectoryPath` — `Path` of this container.
-    pub fn get_directory_path(&self) -> Path {
+    pub fn get_directory_path(&self) -> &Path {
         Path::new(".")
     }
 }
 
 /// `xaero/hud/minimap/world/state/MinimapWorldState`: the paths a world
 /// container lives at while the minimap is running.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MinimapWorldState {
-    auto_root_container_path: XaeroPath,
+    auto_root_container_path: Option<XaeroPath>,
     auto_world_path: XaeroPath,
     custom_world_path: XaeroPath,
-    outdated_auto_root_container_paths: Vec<XaeroPath>,
+    /// Java uses a fixed array of four slots.
+    outdated_auto_root_container_paths: Vec<Option<XaeroPath>>,
+    auto_container_path_ignore_case_cache: Option<XaeroPath>,
+}
+
+impl Default for MinimapWorldState {
+    fn default() -> Self {
+        MinimapWorldState {
+            auto_root_container_path: None,
+            auto_world_path: XaeroPath::new(),
+            custom_world_path: XaeroPath::new(),
+            outdated_auto_root_container_paths: vec![None; 4],
+            auto_container_path_ignore_case_cache: None,
+        }
+    }
 }
 
 impl MinimapWorldState {
@@ -374,12 +407,42 @@ impl MinimapWorldState {
         MinimapWorldState::default()
     }
 
-    pub fn set_auto_root_container_path(&mut self, path: XaeroPath) {
-        self.auto_root_container_path = path;
+    /// `setAutoRootContainerPath` — the Java version throws
+    /// `IllegalStateException` when the path was already set; the Rust port
+    /// returns an error instead.
+    pub fn set_auto_root_container_path(&mut self, path: XaeroPath) -> Result<(), String> {
+        if self.auto_root_container_path.is_some() {
+            return Err("auto root container path is already set".into());
+        }
+        self.auto_root_container_path = Some(path);
+        Ok(())
     }
 
-    pub fn get_auto_root_container_path(&self) -> &XaeroPath {
-        &self.auto_root_container_path
+    pub fn get_auto_root_container_path(&self) -> Option<&XaeroPath> {
+        self.auto_root_container_path.as_ref()
+    }
+
+    /// `setOutdatedAutoRootContainerPath(int, XaeroPath)`.
+    pub fn set_outdated_auto_root_container_path(
+        &mut self,
+        index: usize,
+        path: XaeroPath,
+    ) -> Result<(), String> {
+        let slot = self
+            .outdated_auto_root_container_paths
+            .get_mut(index)
+            .ok_or_else(|| format!("outdated path index {index} out of bounds"))?;
+        if slot.is_some() {
+            return Err("outdated auto root container path is already set".into());
+        }
+        *slot = Some(path);
+        Ok(())
+    }
+
+    pub fn get_outdated_auto_root_container_path(&self, index: usize) -> Option<&XaeroPath> {
+        self.outdated_auto_root_container_paths
+            .get(index)
+            .and_then(|slot| slot.as_ref())
     }
 
     pub fn set_auto_world_path(&mut self, path: XaeroPath) {
@@ -398,13 +461,45 @@ impl MinimapWorldState {
         &self.custom_world_path
     }
 
-    /// Current world path: the custom one when set, else the auto one.
-    pub fn get_current_world_path(&self) -> XaeroPath {
+    /// `getCustomContainerPath()` — the parent of the custom world path.
+    pub fn get_custom_container_path(&self) -> Option<XaeroPath> {
         if self.custom_world_path.is_empty() {
-            self.auto_world_path.clone()
+            None
+        } else {
+            self.custom_world_path.parent()
+        }
+    }
+
+    pub fn get_auto_container_path_ignore_case_cache(&self) -> Option<&XaeroPath> {
+        self.auto_container_path_ignore_case_cache.as_ref()
+    }
+
+    pub fn set_auto_container_path_ignore_case_cache(&mut self, path: XaeroPath) {
+        self.auto_container_path_ignore_case_cache = Some(path);
+    }
+
+    /// `getCurrentWorldPath(XaeroPath)` — custom path wins over auto.
+    pub fn current_world_path_for(&self, auto: &XaeroPath) -> XaeroPath {
+        if self.custom_world_path.is_empty() {
+            auto.clone()
         } else {
             self.custom_world_path.clone()
         }
+    }
+
+    /// Current world path: the custom one when set, else the auto one.
+    pub fn get_current_world_path(&self) -> XaeroPath {
+        self.current_world_path_for(&self.auto_world_path)
+    }
+
+    /// `getCurrentContainerPath()` — parent of the current world path.
+    pub fn get_current_container_path(&self) -> Option<XaeroPath> {
+        self.get_current_world_path().parent()
+    }
+
+    /// `getCurrentRootContainerPath()` — root of the current container path.
+    pub fn get_current_root_container_path(&self) -> Option<XaeroPath> {
+        self.get_current_container_path().and_then(|path| path.root())
     }
 }
 
@@ -466,9 +561,9 @@ impl MinimapWorld {
         let name = set.get_name().to_string();
         self.waypoint_sets.insert(name.clone(), set);
         if self.current_waypoint_set_id.is_empty() {
-            self.current_waypoint_set_id = name;
+            self.current_waypoint_set_id = name.clone();
         }
-        set
+        self.waypoint_sets.get(&name).cloned().unwrap()
     }
 
     /// `getWaypointSet(String)`.
@@ -495,6 +590,11 @@ impl MinimapWorld {
         self.waypoint_sets.values()
     }
 
+    /// Mutable variant used by the waypoint handlers.
+    pub fn iter_waypoint_sets_mut(&mut self) -> impl Iterator<Item = &mut WaypointSet> {
+        self.waypoint_sets.values_mut()
+    }
+
     /// `setCurrentWaypointSetId(String)`.
     pub fn set_current_waypoint_set_id(&mut self, id: &str) {
         self.current_waypoint_set_id = id.to_string();
@@ -511,6 +611,17 @@ impl MinimapWorld {
             self.waypoint_sets.values().next()
         } else {
             self.waypoint_sets.get(&self.current_waypoint_set_id)
+        }
+    }
+
+    /// Mutable variant of [`Self::get_current_waypoint_set`], including the
+    /// first-set fallback of the Java implementation.
+    pub fn get_current_waypoint_set_mut(&mut self) -> Option<&mut WaypointSet> {
+        if self.current_waypoint_set_id.is_empty() {
+            self.waypoint_sets.values_mut().next()
+        } else {
+            let id = self.current_waypoint_set_id.clone();
+            self.waypoint_sets.get_mut(&id)
         }
     }
 
@@ -628,6 +739,71 @@ mod tests {
         );
         state.set_custom_world_path(XaeroPath::of(&["custom"]));
         assert_eq!(state.get_current_world_path(), XaeroPath::of(&["custom"]));
+        assert_eq!(
+            state.get_current_container_path(),
+            Some(XaeroPath::new())
+        );
+    }
+
+    #[test]
+    fn state_paths_and_java_style_guards() {
+        let mut state = MinimapWorldState::new();
+        let root = XaeroPath::of(&["worlds", "root"]);
+        assert!(state.set_auto_root_container_path(root.clone()).is_ok());
+        assert!(state.set_auto_root_container_path(root.clone()).is_err());
+        assert_eq!(state.get_auto_root_container_path(), Some(&root));
+
+        let outdated = XaeroPath::of(&["old", "one"]);
+        assert!(state.set_outdated_auto_root_container_path(0, outdated.clone()).is_ok());
+        assert!(state.set_outdated_auto_root_container_path(0, outdated.clone()).is_err());
+        assert!(state.set_outdated_auto_root_container_path(4, outdated).is_err());
+        assert_eq!(
+            state.get_outdated_auto_root_container_path(0),
+            Some(&XaeroPath::of(&["old", "one"]))
+        );
+        assert_eq!(state.get_outdated_auto_root_container_path(1), None);
+
+        state.set_auto_world_path(XaeroPath::of(&["worlds", "root", "dim", "world"]));
+        assert_eq!(
+            state.get_current_root_container_path(),
+            Some(XaeroPath::of(&["worlds"]))
+        );
+        state.set_custom_world_path(XaeroPath::of(&["custom", "world"]));
+        assert_eq!(
+            state.get_custom_container_path(),
+            Some(XaeroPath::of(&["custom"]))
+        );
+
+        state.set_auto_container_path_ignore_case_cache(XaeroPath::of(&["worlds", "root"]));
+        assert_eq!(
+            state.get_auto_container_path_ignore_case_cache(),
+            Some(&XaeroPath::of(&["worlds", "root"]))
+        );
+    }
+
+    #[test]
+    fn path_parent_root_and_subpath() {
+        let path = XaeroPath::of(&["worlds", "root", "dim"]);
+        assert_eq!(path.parent(), Some(XaeroPath::of(&["worlds", "root"])));
+        assert_eq!(path.root(), Some(XaeroPath::of(&["worlds"])));
+        assert_eq!(path.sub_path(2), XaeroPath::of(&["worlds", "root"]));
+        assert_eq!(path.node_count(), 3);
+        assert!(path.is_sub_of(&XaeroPath::of(&["worlds"])));
+        assert!(path.is_sub_of(&XaeroPath::of(&["worlds", "root"])));
+    }
+
+    #[test]
+    fn manager_server_level_id_and_ignore_flag() {
+        let mut manager = MinimapWorldManager::new();
+        let root = MinimapWorldRootContainer::default();
+        assert!(!manager.has_server_level_id(&root));
+        manager.set_server_level_id(7);
+        assert_eq!(manager.get_server_level_id(), Some(7));
+        assert!(manager.has_server_level_id(&root));
+
+        let mut ignoring = MinimapWorldRootContainer::default();
+        ignoring.config.set_ignore_server_level_id(true);
+        assert!(!manager.has_server_level_id(&ignoring));
     }
 
     #[test]

@@ -128,21 +128,23 @@ impl MinimapTile {
             self.green.push(Vec::new());
             self.blue.push(Vec::new());
         }
-        let rs = &mut self.red[level];
-        let gs = &mut self.green[level];
-        let bs = &mut self.blue[level];
-        for gv in [rs, gs, bs] {
-            while gv.len() <= x {
-                gv.push(Vec::new());
-            }
-            let row = &mut gv[x];
-            while row.len() <= z {
-                row.push(0);
-            }
-        }
-        rs[x][z] = r;
-        gs[x][z] = g;
-        bs[x][z] = b;
+        ensure_column(&mut self.red[level], x, z);
+        ensure_column(&mut self.green[level], x, z);
+        ensure_column(&mut self.blue[level], x, z);
+        self.red[level][x][z] = r;
+        self.green[level][x][z] = g;
+        self.blue[level][x][z] = b;
+    }
+}
+
+/// Grows one colour plane so that `(x, z)` exists, zero-filling new cells.
+fn ensure_column(plane: &mut Vec<Vec<u8>>, x: usize, z: usize) {
+    while plane.len() <= x {
+        plane.push(Vec::new());
+    }
+    let row = &mut plane[x];
+    while row.len() <= z {
+        row.push(0);
     }
 }
 

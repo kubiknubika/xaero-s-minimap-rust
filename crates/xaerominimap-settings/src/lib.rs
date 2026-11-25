@@ -9,14 +9,37 @@
 //! The `categories` module ports the newer category/rule/settings
 //! system of `xaero/hud/category`.
 
+pub mod builtin_info_displays;
 pub mod categories;
+pub mod config_ui;
+pub mod info_display;
+pub mod info_display_codec;
+pub mod info_display_io;
+pub mod radar_categories;
 
+pub use builtin_info_displays::{
+    adapt_display_order, for_each as for_each_builtin_info_display, BuiltInInfoDisplay,
+    BUILTIN_INFO_DISPLAYS, InfoDisplayCodec, InfoDisplayWidgetKind,
+};
 pub use categories::{
     EditorSettingType, ExcludeListMode, FilterObjectCategory, FilterObjectCategoryBuilder,
+    FilterObjectCategoryData,
     HardRulePredicate, ObjectCategory, ObjectCategoryBuilder, ObjectCategoryData,
     ObjectCategoryDataBuilder, ObjectCategoryHardRule, HardRuleBuilder, ObjectCategoryListRule,
     ObjectCategoryListRuleType, ObjectCategoryRule, ObjectCategoryRuleResolver,
     ObjectCategorySetting, ObjectCategorySettingBuilder,
+};
+pub use config_ui::{
+    ConfigUiBinding, ConfigUiType, ConfigUiTypeManager, UI_BINDINGS,
+};
+pub use info_display::{
+    InfoDisplayConfigData, InfoDisplayManagerConfigData, InfoDisplayManagerConfigDataBuilder,
+};
+pub use info_display_codec::InfoDisplayState;
+pub use info_display_io::{decode as decode_info_display, encode as encode_info_display};
+pub use radar_categories::{
+    all_settings, default_settings, setting_by_id, RadarCategory, RadarCategoryData,
+    RadarCategoryManager, RadarEntityInfo, RadarHardRule, RadarListRuleType, RadarSetting,
 };
 
 use std::collections::BTreeMap;
@@ -31,6 +54,14 @@ pub enum SettingValue {
     Long(i64),
     Float(f32),
     Str(String),
+}
+
+/// The neutral default for a setting is an empty string: builders start from
+/// it and replace it with the real default value when one is supplied.
+impl Default for SettingValue {
+    fn default() -> Self {
+        SettingValue::Str(String::new())
+    }
 }
 
 impl SettingValue {

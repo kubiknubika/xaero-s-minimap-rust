@@ -1,0 +1,17 @@
+[package]
+name = "xaerominimap-horizon"
+description = "Horizon (Minecraft 26.3 Rust Edition) adapter for the ported Xaero's Minimap data layer."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+xaerominimap-core = { path = "../xaerominimap-core" }
+xaerominimap-controls = { path = "../xaerominimap-controls" }
+xaerominimap-network = { path = "../xaerominimap-network" }
+xaerominimap-render = { path = "../xaerominimap-render" }
+xaerominimap-settings = { path = "../xaerominimap-settings" }
+# Pinned to a public fork because the upstream `horizon-rust/horizon` repository
+# is not reachable from this workspace. Swap the URL when upstream is available.
+horizon-hooks = { git = "https://github.com/promikailamin/horizon.git", rev = "fed88405ed23fb3262760448480977a720b4a6ef" }

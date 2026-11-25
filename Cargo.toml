@@ -1,10 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/xaerominimap-json",
     "crates/xaerominimap-core",
-    "crates/xaerominap-settings",
-    "crates/xaerominap-render",
+    "crates/xaerominimap-settings",
+    "crates/xaerominimap-controls",
+    "crates/xaerominimap-network",
+    "crates/xaerominimap-render",
     "crates/xaerominimap",
+    "crates/xaerominimap-horizon",
 ]
 
 [workspace.package]

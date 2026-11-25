@@ -9,9 +9,10 @@ use crate::world::MinimapWorld;
 
 /// `xaero/hud/minimap/waypoint/WaypointVisibilityType`: where a waypoint is
 /// visible.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
 pub enum WaypointVisibilityType {
     /// Visible on the minimap only.
+    #[default]
     Local,
     /// Visible everywhere (the global map).
     Global,
@@ -250,7 +251,11 @@ pub struct Waypoint {
     pub visibility: WaypointVisibilityType,
     /// `oneoffDestinationZ`.
     pub oneoff_destination: bool,
-    /// Third-party origin marker (`setThirdPartyOrigin`).
+    /// Third-party origin marker (`setThirdPartyOrigin` / `isThirdParty`).
+    pub third_party: bool,
+    /// Origin id passed to `Waypoint.setThirdPartyOrigin(Identifier)`.
+    pub third_party_origin: Option<String>,
+    /// Marker for waypoints deleted by a third party.
     pub third_party_deleted: bool,
     /// `isEffectivelyDeleted`.
     pub effectively_deleted: bool,
@@ -275,6 +280,7 @@ impl Waypoint {
             color: None,
             waypoint_type: 0,
             third_party: false,
+            third_party_origin: None,
             purpose: WaypointPurpose::Normal,
             rotation: false,
             yaw: 0,
@@ -290,7 +296,14 @@ impl Waypoint {
     }
 
     /// Constructor with a color.
-    pub fn with_color(x: i32, y: i32, z: i32, name: &str, symbol: &str, color: WaypointColor) -> Self {
+    pub fn new_with_color(
+        x: i32,
+        y: i32,
+        z: i32,
+        name: &str,
+        symbol: &str,
+        color: WaypointColor,
+    ) -> Self {
         Waypoint::new(x, y, z, name, symbol).with_color(color)
     }
 
@@ -356,6 +369,17 @@ impl Waypoint {
     pub fn with_third_party(mut self, third_party: bool) -> Self {
         self.third_party = third_party;
         self
+    }
+
+    /// `setThirdPartyOrigin(Identifier)`.
+    pub fn set_third_party_origin(&mut self, origin: impl Into<String>) {
+        self.third_party = true;
+        self.third_party_origin = Some(origin.into());
+    }
+
+    /// `getThirdPartyOrigin()`.
+    pub fn third_party_origin(&self) -> Option<&str> {
+        self.third_party_origin.as_deref()
     }
 
     /// `getSymbol()`.
@@ -513,6 +537,10 @@ impl WaypointSet {
 
     pub fn get_waypoints(&self) -> &[Waypoint] {
         &self.waypoints
+    }
+
+    pub fn get_waypoints_mut(&mut self) -> &mut Vec<Waypoint> {
+        &mut self.waypoints
     }
 
     pub fn add(&mut self, waypoint: Waypoint) {

@@ -4,7 +4,11 @@ description = "Facade crate of the Xaero's Minimap Rust rewrite."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 xaerominimap-core = { path = "../xaerominimap-core" }
+xaerominimap-controls = { path = "../xaerominimap-controls" }
+xaerominimap-network = { path = "../xaerominimap-network" }
+xaerominimap-render = { path = "../xaerominimap-render" }
 xaerominimap-settings = { path = "../xaerominimap-settings" }

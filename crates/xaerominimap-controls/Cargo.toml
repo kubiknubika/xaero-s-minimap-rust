@@ -1,0 +1,9 @@
+[package]
+name = "xaerominimap-controls"
+description = "Key mappings, controllers and tick handling of the Xaero's Minimap Rust rewrite."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

@@ -1,0 +1,9 @@
+[package]
+name = "xaerominimap-json"
+description = "Dependency-free JSON tree and parser shared by the Xaero's Minimap Rust rewrite."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
